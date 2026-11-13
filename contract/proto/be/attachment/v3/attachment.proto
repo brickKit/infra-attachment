@@ -1,0 +1,157 @@
+// The attachment member's system surface (assembly protocol 12): a parent record's owner asks for its attachments'
+// upload sessions and downloads, lists them and commands their lifecycle. The attachment member checks that the
+// calling service is the registered owner of the parent's resource type (its catalog from the authorization member);
+// it never calls the owner (D68). Rules: infra/attachment's docs/design.md (AT01-AT14).
+syntax = "proto3";
+
+package be.attachment.v3;
+
+option go_package = "github.com/brickKit/infra-attachment/contract/v3/gen/go/be/attachment/v3;attachmentv3";
+
+service AttachmentService {
+  // CreateUpload opens an upload session for a new attachment of the parent, or a new content version of one
+  // (replace_attachment_id): a presigned upload address and the confirm credential the user presents (AT03).
+  rpc CreateUpload(CreateUploadRequest) returns (CreateUploadResponse);
+  // IssueDownload gives the user access to an available attachment's current version: a presigned address for a
+  // normal category, a one-time credential for a strict one (AT06).
+  rpc IssueDownload(IssueDownloadRequest) returns (IssueDownloadResponse);
+  // List answers the parent's attachments (AT07); the owner filters the categories by the user's field qualification.
+  rpc List(ListRequest) returns (ListResponse);
+  // Detach takes one attachment, or every one of the parent, off the parent; a retention start may come with it
+  // (AT08, AT09). Idempotent.
+  rpc Detach(DetachRequest) returns (DetachResponse);
+  // Restore puts a detached attachment back within its grace period (AT08).
+  rpc Restore(RestoreRequest) returns (RestoreResponse);
+  // SetRetentionStart sets the date an attachment's retention counts from (one, or every one of the parent; AT09).
+  rpc SetRetentionStart(SetRetentionStartRequest) returns (SetRetentionStartResponse);
+  // Erase purges at once, without the grace period or the minimum retention: one attachment, or the parent's of the
+  // categories given (the parent was destroyed or erased, AT10); an attachment under hold is kept and reported.
+  rpc Erase(EraseRequest) returns (EraseResponse);
+  // Hold keeps one attachment, or every one of the parent, from being purged until released (AT11).
+  rpc Hold(HoldRequest) returns (HoldResponse);
+  rpc ReleaseHold(ReleaseHoldRequest) returns (ReleaseHoldResponse);
+}
+
+// Parent is the record the attachments belong to; its owner is the calling service.
+message Parent {
+  string resource_type = 1;
+  string record_id = 2;
+}
+
+message CreateUploadRequest {
+  Parent parent = 1;
+  string category = 2;
+  string file_name = 3;
+  // The size and type the client declares: they are signed into the upload address; the confirmation checks the
+  // object itself.
+  int64 size = 4;
+  string content_type = 5;
+  // The user the confirm credential is bound to (a principal).
+  string user = 6;
+  // Empty for a new attachment; otherwise the attachment whose content this replaces.
+  string replace_attachment_id = 7;
+}
+
+message CreateUploadResponse {
+  string attachment_id = 1;
+  int64 version = 2;
+  string upload_url = 3;
+  string confirm_credential = 4;
+  string expires_at = 5;
+}
+
+message IssueDownloadRequest {
+  Parent parent = 1;
+  string attachment_id = 2;
+  string user = 3;
+}
+
+message IssueDownloadResponse {
+  // Exactly one: url (a normal category) or credential (a strict one, presented to the attachment member).
+  string url = 1;
+  string credential = 2;
+  string expires_at = 3;
+}
+
+message ListRequest {
+  Parent parent = 1;
+}
+
+message Attachment {
+  string id = 1;
+  string category = 2;
+  string state = 3;
+  string file_name = 4;
+  int64 size = 5;
+  string content_type = 6;
+  int64 version = 7;
+  bool unscanned = 8;
+  string created_at = 9;
+  string sensitivity = 10;
+}
+
+message ListResponse {
+  repeated Attachment attachments = 1;
+}
+
+message DetachRequest {
+  Parent parent = 1;
+  // Empty: every attachment of the parent.
+  string attachment_id = 2;
+  // A date (YYYY-MM-DD), or empty.
+  string retention_start = 3;
+}
+
+message DetachResponse {
+  int32 detached = 1;
+}
+
+message RestoreRequest {
+  Parent parent = 1;
+  string attachment_id = 2;
+}
+
+message RestoreResponse {
+  string state = 1;
+}
+
+message SetRetentionStartRequest {
+  Parent parent = 1;
+  string attachment_id = 2;
+  string date = 3;
+}
+
+message SetRetentionStartResponse {
+  int32 set = 1;
+}
+
+message EraseRequest {
+  Parent parent = 1;
+  // One attachment; or, when empty, the parent's attachments of these categories.
+  string attachment_id = 2;
+  repeated string categories = 3;
+}
+
+message EraseResponse {
+  int32 purged = 1;
+  // The attachments under hold: kept, an alert raised.
+  repeated string held = 2;
+}
+
+message HoldRequest {
+  Parent parent = 1;
+  // Empty: every attachment of the parent, those to come included.
+  string attachment_id = 2;
+  string reason = 3;
+}
+
+message HoldResponse {
+  string hold_id = 1;
+}
+
+message ReleaseHoldRequest {
+  Parent parent = 1;
+  string hold_id = 2;
+}
+
+message ReleaseHoldResponse {}
