@@ -1,0 +1,180 @@
+apiVersion: brickkit/v1
+kind: Component
+
+metadata:
+  id: infra/attachment
+  name: Attachment
+  version: 3.0.0
+  description: "Attachments of the owners' records (protocol 12): upload sessions and downloads by short-lived credentials the parent's owner asks for, the content copied to a final key and checked there, the categories from the authorization member's catalog, detach, retention, holds and purge by the owners' commands; it never calls an owner"
+  repository: https://github.com/brickKit/infra-attachment
+
+events:
+  publishes:
+    - infra.attachment.changed.v1
+
+deployment:
+  type: container
+  build:
+    context: .
+    dockerfile: Dockerfile
+  port: 8204
+  extraPorts:
+    - name: grpc
+      port: 9204
+      protocol: grpc
+
+healthCheck:
+  type: http
+  path: /healthz
+
+readinessCheck:
+  type: http
+  path: /readyz
+
+migration:
+  command: ["/infra-attachment", "migrate"]
+
+local:
+  runCommand: [go, run, .]
+  migrationCommand: [go, run, ., migrate]
+
+configSchema:
+  properties:
+    ATTACHMENT_RETENTION:
+      description: 'each retention class''s minimum and maximum in days, a JSON object {"<class>": {"min_days": n, "max_days": m}}; a class it does not give is to be confirmed and never purged'
+      type: string
+    ATTACHMENT_SCAN:
+      description: 'the scan port: off (the attachments are available unscanned); this version has no engine yet; SDK default off'
+      type: string
+    AUDIT_GRPC_URL:
+      description: 'process-level: the same for every member of a shell'
+      type: string
+    AUTHZ_GRPC_URL:
+      description: 'process-level: the same for every member of a shell'
+      type: string
+    BUS_URL:
+      description: 'process-level: the same for every member of a shell'
+      secret: true
+      type: string
+    DEPLOYMENT_ID:
+      description: 'process-level: the same for every member of a shell'
+      type: string
+    IAM_ISSUER:
+      description: 'process-level: the same for every member of a shell'
+      type: string
+    IAM_JWKS_URL:
+      description: 'process-level: the same for every member of a shell'
+      type: string
+    IMPLEMENTATION_INSTANCE:
+      type: string
+    LOG_LEVEL:
+      description: SDK default info
+      enum:
+        - debug
+        - info
+        - warn
+        - error
+      type: string
+    OBJECT_STORE_ACCESS_KEY:
+      type: string
+    OBJECT_STORE_BUCKET:
+      type: string
+    OBJECT_STORE_PREFIX:
+      type: string
+    OBJECT_STORE_PUBLIC_URL:
+      description: 'the object store''s address as browsers reach it: the presigned upload and download addresses are signed for it; unset: OBJECT_STORE_URL'
+      type: string
+    OBJECT_STORE_REGION:
+      description: SDK default us-east-1
+      type: string
+    OBJECT_STORE_SECRET_KEY:
+      secret: true
+      type: string
+    OBJECT_STORE_URL:
+      type: string
+    OTEL_URL:
+      description: 'process-level: the same for every member of a shell'
+      type: string
+    PG_DATABASE:
+      type: string
+    PG_HOST:
+      type: string
+    PG_IDLE_IN_TX_TIMEOUT:
+      description: a duration (e.g. 2s, 500ms); SDK default 10s
+      type: string
+    PG_LOCK_TIMEOUT:
+      description: a duration (e.g. 2s, 500ms); SDK default 2s
+      type: string
+    PG_MIGRATION_HOST:
+      type: string
+    PG_MIGRATION_PORT:
+      type: integer
+    PG_OWNER_PASSWORD:
+      secret: true
+      type: string
+    PG_OWNER_USER:
+      type: string
+    PG_PASSWORD:
+      secret: true
+      type: string
+    PG_POOL_BACKGROUND:
+      description: SDK default 4
+      type: integer
+    PG_POOL_FOREGROUND:
+      description: SDK default 8
+      type: integer
+    PG_POOLER_PREPARED:
+      description: SDK default true
+      type: boolean
+    PG_PORT:
+      description: SDK default 5432
+      type: integer
+    PG_SCHEMA:
+      type: string
+    PG_STATEMENT_TIMEOUT:
+      description: a duration (e.g. 2s, 500ms); SDK default 5s
+      type: string
+    PG_USER:
+      type: string
+    RECOVERY_PHASE:
+      description: 'process-level: the same for every member of a shell'
+      enum:
+        - frozen
+        - redelivering
+        - replaying
+        - verifying
+        - read_only
+      type: string
+    SERVICE_TLS_CA_FILE:
+      description: a file path, re-read on rotation
+      mount: file
+      secret: true
+      type: string
+    SERVICE_TLS_CERT_FILE:
+      description: a file path, re-read on rotation
+      mount: file
+      secret: true
+      type: string
+    SERVICE_TLS_KEY_FILE:
+      description: a file path, re-read on rotation
+      mount: file
+      secret: true
+      type: string
+    STOP_DRAIN_DELAY:
+      description: a duration (e.g. 2s, 500ms); SDK default 2s
+      type: string
+    STOP_TIMEOUT:
+      description: a duration (e.g. 2s, 500ms); SDK default 30s
+      type: string
+  required:
+    - BUS_URL
+    - IMPLEMENTATION_INSTANCE
+    - PG_DATABASE
+    - PG_HOST
+    - PG_PASSWORD
+    - PG_SCHEMA
+    - PG_USER
+  type: object
+
+release:
+  goModule: true

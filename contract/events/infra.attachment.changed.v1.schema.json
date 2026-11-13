@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://brickkit.dev/infra-attachment/events/infra.attachment.changed.v1.schema.json",
+  "title": "infra.attachment.changed.v1",
+  "description": "An attachment's complete state (docs/design.md AT13), published at each change, overwritten by version: an owner that shows its records' attachments (a count) subscribes to it. It carries no file content and no address.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "owner_component", "resource_type", "record_id", "category", "category_version", "sensitivity",
+    "retention_class", "state", "current_version", "file_name", "retention_start", "version", "created_at", "size",
+    "content_type", "unscanned"],
+  "properties": {
+    "id": {"type": "string", "format": "uuid"},
+    "owner_component": {"type": "string"},
+    "resource_type": {"type": "string"},
+    "record_id": {"type": "string"},
+    "category": {"type": "string"},
+    "category_version": {"type": "string"},
+    "sensitivity": {"enum": ["normal", "strict"]},
+    "retention_class": {"type": "string"},
+    "state": {"enum": ["uploading", "finalizing", "pending_scan", "available", "rejected", "quarantined", "missing", "detached", "purged"]},
+    "current_version": {"type": "integer", "minimum": 0},
+    "file_name": {"type": "string"},
+    "retention_start": {"type": ["string", "null"], "format": "date"},
+    "version": {"type": "integer", "minimum": 1},
+    "created_at": {"type": "string", "format": "date-time"},
+    "size": {"type": ["integer", "null"]},
+    "content_type": {"type": ["string", "null"]},
+    "unscanned": {"type": "boolean"}
+  }
+}

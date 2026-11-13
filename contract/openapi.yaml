@@ -1,0 +1,62 @@
+openapi: 3.1.0
+info:
+  title: infra/attachment user surface
+  version: 3.0.0
+  description: >-
+    Attachments (assembly protocol 12). A user reaches this component only with a credential the parent record's owner
+    asked for on the user's behalf (the owner judged the user's access; this component checks the credential is the
+    user's, unused, unexpired and for this upload or download). A credential that does not exist, was tampered with,
+    expired, was used or is another user's answers 404. Errors are application/problem+json with a reason.
+paths:
+  /api/attachment/uploads/confirm:
+    post:
+      operationId: confirmUpload
+      x-operation: infra.attachment.upload.confirm
+      summary: Confirm an upload with its confirm credential (AT04); the content is checked as copied to its final key
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, required: [credential], properties: {credential: {type: string}}}
+      responses:
+        '200':
+          description: the attachment after the check (available, or rejected with the content not fitting its category)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [attachment_id, state, version, current_version]
+                properties:
+                  attachment_id: {type: string, format: uuid}
+                  state: {type: string}
+                  version: {type: integer, description: the content version confirmed}
+                  current_version: {type: integer}
+        '409': {description: 'UPLOAD_INCOMPLETE: the upload has not arrived yet; the credential is not used up, confirm again', content: {application/problem+json: {schema: {$ref: '#/components/schemas/Problem'}}}}
+        default: {$ref: '#/components/responses/problem'}
+  /api/attachment/downloads:
+    post:
+      operationId: downloadStrict
+      x-operation: infra.attachment.download.read
+      summary: Download a strict category's attachment with a one-time credential (AT06); saved as a file, never shown
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {type: object, required: [credential], properties: {credential: {type: string}}}
+      responses:
+        '200':
+          description: >-
+            the content, with Content-Disposition attachment, X-Content-Type-Options nosniff and Content-Security-Policy
+            sandbox
+          content:
+            application/octet-stream: {schema: {type: string, format: binary}}
+        default: {$ref: '#/components/responses/problem'}
+components:
+  responses:
+    problem:
+      description: an error (application/problem+json with reason)
+      content:
+        application/problem+json:
+          schema: {$ref: '#/components/schemas/Problem'}
+  schemas:
+    Problem: {type: object, required: [reason], properties: {reason: {type: string}, detail: {type: string}}}
