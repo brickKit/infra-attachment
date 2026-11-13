@@ -40,7 +40,9 @@
 | `ATTACHMENT_RETENTION` | 保留类别的年限 |
 | `ATTACHMENT_SCAN` | 扫描端口（首批只有 `off`） |
 | `OBJECT_STORE_*`（必填） | 自己的桶与前缀、凭据 |
-| `PG_*`、`BUS_URL`、`IMPLEMENTATION_INSTANCE`、`SERVICE_TLS_*`、`IAM_*`、`AUTHZ_GRPC_URL`、`DEPLOYMENT_ID` | 平台的键 |
+| `PG_HOST`、`PG_DATABASE`、`PG_USER`、`PG_PASSWORD`、`PG_SCHEMA`（必填） | 自己的数据库，密码是密钥；迁移另用 `PG_OWNER_USER`、`PG_OWNER_PASSWORD` |
+| `BUS_URL`（必填，密钥）、`IMPLEMENTATION_INSTANCE`（必填） | 消息系统；实现实例是安装时生成的随机身份 |
+| `DEPLOYMENT_ID`、`IAM_ISSUER`、`IAM_JWKS_URL`、`AUTHZ_GRPC_URL`、`SERVICE_TLS_CERT_FILE`、`SERVICE_TLS_KEY_FILE`、`SERVICE_TLS_CA_FILE`（必填） | 受保护的用户面与 mTLS 的系统面；授权成员的地址另用来读附件类别目录 |
 
 ## 契约索引
 
