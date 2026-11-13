@@ -118,6 +118,16 @@ func SetState(m *core.Base, ctx context.Context, tx db.Tx, id, state string) err
 	return Publish(m, ctx, tx, id)
 }
 
+// Touch records a change of a field the state event carries (the current version, the retention start) and emits the
+// event with the next revision: a consumer that keeps the newest revision never misses it (AT13).
+func Touch(m *core.Base, ctx context.Context, tx db.Tx, id string) error {
+	if _, err := tx.Exec(ctx, `UPDATE attachment SET revision = revision + 1, updated_at = now() WHERE id = $1::uuid`,
+		id); err != nil {
+		return err
+	}
+	return Publish(m, ctx, tx, id)
+}
+
 // Publish emits the attachment's complete state on the component's stream (AT13).
 func Publish(m *core.Base, ctx context.Context, tx db.Tx, id string) error {
 	if m.RT.Events == nil {

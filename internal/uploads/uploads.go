@@ -20,6 +20,7 @@ import (
 	core "github.com/brickKit/infra-attachment/v3/internal/core"
 	records "github.com/brickKit/infra-attachment/v3/internal/records"
 
+	"github.com/brickKit/be-sdk-go/v3/audit"
 	"github.com/brickKit/be-sdk-go/v3/canon"
 	"github.com/brickKit/be-sdk-go/v3/db"
 	"github.com/brickKit/be-sdk-go/v3/errs"
@@ -122,6 +123,18 @@ func CreateUpload(m *core.Base, ctx context.Context, in *attachmentv3.CreateUplo
 		url, err := m.Store.PresignPut(stagingKey(id, v), in.GetSize(), baseType(in.GetContentType()), core.UploadTTL)
 		if err != nil {
 			return err
+		}
+		if m.RT.Audit != nil { // the issue of a credential is audited as the download's is (AT14)
+			a, err := records.ByID(ctx, tx, id, false)
+			if err != nil {
+				return err
+			}
+			if _, err := m.RT.Audit.Write(ctx, tx, audit.Record{Category: audit.BusinessChange, Operation: core.OpManage,
+				Outcome: audit.Succeeded, Actor: a.Owner, Represented: in.GetUser(),
+				Target: audit.TargetOf("infra.attachment", id, map[string]any{"issued": "upload session",
+					"content_version": v})}); err != nil {
+				return err
+			}
 		}
 		credential = value
 		*out = attachmentv3.CreateUploadResponse{AttachmentId: id, Version: v, UploadUrl: url, ExpiresAt: canon.Time(expires)}
@@ -249,8 +262,14 @@ func Finalize(m *core.Base, ctx context.Context, id string, v int64) error {
 	if err != nil {
 		return storeErr(err)
 	}
-	return record(m, ctx, id, v, check{size: int64(n) + rest, typ: baseType(http.DetectContentType(head[:n])),
-		sha: hex.EncodeToString(h.Sum(nil))})
+	if err := record(m, ctx, id, v, check{size: int64(n) + rest, typ: baseType(http.DetectContentType(head[:n])),
+		sha: hex.EncodeToString(h.Sum(nil))}); err != nil {
+		return err
+	}
+	// the staged object has served its purpose (AT12): what the record points to is the final key; a failed delete is
+	// the daily reconciliation's (orphans)
+	_ = m.Store.Delete(ctx, stagingKey(id, v))
+	return nil
 }
 
 type check struct {
@@ -317,7 +336,7 @@ func record(m *core.Base, ctx context.Context, id string, v int64, c check) erro
 		if _, err := tx.Exec(ctx, `UPDATE attachment SET current_version = $2 WHERE id = $1::uuid`, id, v); err != nil {
 			return err
 		}
-		return records.Publish(m, ctx, tx, id)
+		return records.Touch(m, ctx, tx, id)
 	})
 }
 

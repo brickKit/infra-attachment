@@ -51,6 +51,10 @@ func New(rt *runtime.Runtime) (*Module, error) {
 	return &Module{b: b}, nil
 }
 
+// Base is the module's runtime for the integration tests, which run the hourly and daily jobs on demand (their
+// intervals are too long to wait for).
+func (m *Module) Base() *core.Base { return m.b }
+
 // UseCatalog replaces the catalog's source (the integration tests: the authorization member's catalog needs its
 // definitions).
 func (m *Module) UseCatalog(c core.CatalogSource) { m.b.Catalog = c }

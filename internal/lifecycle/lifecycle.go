@@ -6,6 +6,7 @@ package lifecycle
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"time"
@@ -92,7 +93,7 @@ func Detach(m *core.Base, ctx context.Context, in *attachmentv3.DetachRequest) (
 		}
 		for _, a := range as {
 			if start != nil {
-				if _, err := tx.Exec(ctx, `UPDATE attachment SET retention_start = $2::date WHERE id = $1::uuid`, a.ID, *start); err != nil {
+				if err := laterStart(m, ctx, tx, a.ID, *start); err != nil {
 					return err
 				}
 			}
@@ -181,7 +182,7 @@ func SetRetentionStart(m *core.Base, ctx context.Context, in *attachmentv3.SetRe
 		}
 		as, err := targets(ctx, tx, caller, in.GetParent(), in.GetAttachmentId())
 		for _, a := range as {
-			if _, err := tx.Exec(ctx, `UPDATE attachment SET retention_start = $2::date WHERE id = $1::uuid`, a.ID, *start); err != nil {
+			if err := laterStart(m, ctx, tx, a.ID, *start); err != nil {
 				return err
 			}
 			out.Set++
@@ -189,6 +190,18 @@ func SetRetentionStart(m *core.Base, ctx context.Context, in *attachmentv3.SetRe
 		return err
 	})
 	return out, err
+}
+
+// laterStart moves an attachment's retention start to the date when it is later (or unset): the owner's end commands
+// may arrive out of order (a completion retried after the close), and the retention only ever grows; a move is a
+// change of the state event.
+func laterStart(m *core.Base, ctx context.Context, tx db.Tx, id, start string) error {
+	tag, err := tx.Exec(ctx, `UPDATE attachment SET retention_start = $2::date WHERE id = $1::uuid
+		AND (retention_start IS NULL OR retention_start < $2::date)`, id, start)
+	if err != nil || tag.RowsAffected() == 0 {
+		return err
+	}
+	return records.Touch(m, ctx, tx, id)
 }
 
 // held says whether a live hold covers the attachment: one on it, or one on its parent (AT11).
@@ -327,10 +340,16 @@ func Hold(m *core.Base, ctx context.Context, in *attachmentv3.HoldRequest) (*att
 		if err != nil {
 			return err
 		}
+		// the attachments the hold covers are locked, so a purge running now either finishes before the hold or sees
+		// it; a purged attachment has nothing left to hold
 		var att *string
+		as, err := targets(ctx, tx, caller, p, in.GetAttachmentId())
+		if err != nil {
+			return err
+		}
 		if id := in.GetAttachmentId(); id != "" {
-			if _, err := targets(ctx, tx, caller, p, id); err != nil {
-				return err
+			if as[0].State == core.Purged {
+				return core.NotFound("attachment")
 			}
 			att = &id
 		}
@@ -362,27 +381,31 @@ func ReleaseHold(m *core.Base, ctx context.Context, in *attachmentv3.ReleaseHold
 
 // Purge purges what is due (AT09, AT12): the detached attachments past the grace period whose retention start is set,
 // whose class's minimum retention is over (a class the deployment did not give is to be confirmed: never) and that no
-// hold covers; and the rejected attachments whose sessions are over. It alerts the retention starts pending for over
-// a year.
+// hold covers; and the rejected attachments whose sessions are over. The retention conditions are in the query, so the
+// attachments that can never be purged (a class not given, no start) do not crowd out the due ones.
 func Purge(m *core.Base, ctx context.Context, _ *work.Run) error {
+	mins := map[string]int{}
+	for class, r := range m.Retention {
+		mins[class] = r.MinDays
+	}
+	classes, _ := json.Marshal(mins)
 	var due []string
 	err := m.RT.DB.BackgroundTx(ctx, func(ctx context.Context, tx db.Tx) error {
-		rows, err := tx.Query(ctx, `SELECT a.id::text, a.retention_class, a.retention_start::text, a.state FROM attachment a
-			WHERE (a.state = 'detached' AND a.detached_at < now() - $1::interval)
+		rows, err := tx.Query(ctx, `SELECT a.id::text, a.state FROM attachment a
+			WHERE (a.state = 'detached' AND a.detached_at < now() - $1::interval AND a.retention_start IS NOT NULL
+			       AND $2::jsonb ? a.retention_class
+			       AND a.retention_start + (($2::jsonb ->> a.retention_class)::int) <= current_date)
 			   OR (a.state = 'rejected' AND NOT EXISTS (SELECT 1 FROM version v WHERE v.attachment_id = a.id
 			       AND v.session_expires > now()))
-			ORDER BY a.id LIMIT 500 FOR UPDATE SKIP LOCKED`, core.Grace.String())
+			ORDER BY a.id LIMIT 500 FOR UPDATE SKIP LOCKED`, core.Grace.String(), string(classes))
 		if err != nil {
 			return err
 		}
-		type cand struct {
-			id, class, state string
-			start            *string
-		}
+		type cand struct{ id, state string }
 		var cands []cand
 		for rows.Next() {
 			var c cand
-			if err := rows.Scan(&c.id, &c.class, &c.start, &c.state); err != nil {
+			if err := rows.Scan(&c.id, &c.state); err != nil {
 				rows.Close()
 				return err
 			}
@@ -390,25 +413,10 @@ func Purge(m *core.Base, ctx context.Context, _ *work.Run) error {
 		}
 		rows.Close()
 		for _, c := range cands {
-			a, err := records.ByID(ctx, tx, c.id, false)
-			if err != nil {
-				return err
-			}
 			if c.state == core.Detached {
-				r, known := m.Retention[c.class]
-				switch {
-				case c.start == nil:
-					if time.Since(a.CreatedAt) > 365*24*time.Hour {
-						m.RT.Logger.Warn("an attachment's retention start is pending for over a year", "event",
-							"attachment_retention_pending", "attachment", c.id)
-					}
-					continue
-				case !known: // to be confirmed: never purged (protocol 11)
-					continue
-				}
-				start, _ := time.Parse(time.DateOnly, *c.start)
-				if time.Now().Before(start.AddDate(0, 0, r.MinDays)) {
-					continue
+				a, err := records.ByID(ctx, tx, c.id, false)
+				if err != nil {
+					return err
 				}
 				if h, err := held(ctx, tx, a); err != nil || h {
 					if err != nil {
@@ -428,4 +436,43 @@ func Purge(m *core.Base, ctx context.Context, _ *work.Run) error {
 		DeleteObjects(m, ctx, id)
 	}
 	return err
+}
+
+// RetentionAlerts warns of the retentions that need a person (AT09), once a day: an attachment still attached to its
+// parent past its class's longest retention (the owner should end it), and a detached one whose retention start is
+// still pending a year after it was made (the owner never gave the date).
+func RetentionAlerts(m *core.Base, ctx context.Context) error {
+	maxes := map[string]int{}
+	for class, r := range m.Retention {
+		if r.MaxDays > 0 {
+			maxes[class] = r.MaxDays
+		}
+	}
+	classes, _ := json.Marshal(maxes)
+	return m.RT.DB.BackgroundTx(ctx, func(ctx context.Context, tx db.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT id::text, retention_class, CASE WHEN state = 'detached' THEN 'pending' ELSE
+			'exceeded' END FROM attachment
+			WHERE (state NOT IN ('detached', 'purged') AND retention_start IS NOT NULL AND $1::jsonb ? retention_class
+			       AND retention_start + (($1::jsonb ->> retention_class)::int) < current_date)
+			   OR (state = 'detached' AND retention_start IS NULL AND created_at < now() - interval '365 days')
+			ORDER BY id LIMIT 1000`, string(classes))
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var id, class, kind string
+			if err := rows.Scan(&id, &class, &kind); err != nil {
+				return err
+			}
+			if kind == "exceeded" {
+				m.RT.Logger.Warn("an attachment is kept past its class's longest retention", "event",
+					"attachment_retention_exceeded", "attachment", id, "class", class)
+			} else {
+				m.RT.Logger.Warn("an attachment's retention start is pending for over a year", "event",
+					"attachment_retention_pending", "attachment", id)
+			}
+		}
+		return rows.Err()
+	})
 }

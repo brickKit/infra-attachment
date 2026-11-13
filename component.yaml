@@ -4,7 +4,7 @@ kind: Component
 metadata:
   id: infra/attachment
   name: Attachment
-  version: 3.0.1
+  version: 3.0.2
   description: "Attachments of the owners' records (protocol 12): upload sessions and downloads by short-lived credentials the parent's owner asks for, the content copied to a final key and checked there, the categories from the authorization member's catalog, detach, retention, holds and purge by the owners' commands; it never calls an owner"
   repository: https://github.com/brickKit/infra-attachment
 

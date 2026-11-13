@@ -82,6 +82,8 @@ type fixture struct {
 	carol  client
 	dave   client
 	record string
+	mod    *attachment.Module // the running member: its jobs run on demand
+	logs   func() string      // the member's log so far
 }
 
 func TestAttachmentEndToEnd(t *testing.T) {
@@ -94,6 +96,7 @@ func TestAttachmentEndToEnd(t *testing.T) {
 	fx.replace()
 	fx.lifecycle()
 	fx.missing()
+	fx.purge()
 }
 
 func start(t *testing.T) *fixture {
@@ -137,7 +140,7 @@ func start(t *testing.T) *fixture {
 		"PG_OWNER_PASSWORD": pw, "BUS_URL": natsURL, "IMPLEMENTATION_INSTANCE": ids.New().String(),
 		"OBJECT_STORE_URL": s3url, "OBJECT_STORE_BUCKET": "be-sdk-test", "OBJECT_STORE_PREFIX": prefix,
 		"OBJECT_STORE_ACCESS_KEY": access, "OBJECT_STORE_SECRET_KEY": secret,
-		core.KeyRetention: `{"demo_contract": {"min_days": 0, "max_days": 3650}}`} {
+		core.KeyRetention: `{"demo_contract": {"min_days": 30, "max_days": 3650}}`} {
 		env[k] = v
 	}
 	var logs bytes.Buffer
@@ -150,6 +153,7 @@ func start(t *testing.T) *fixture {
 		}
 	})
 	out := &lockedWriter{w: &logs, mu: &logMu}
+	fx.logs = func() string { logMu.Lock(); defer logMu.Unlock(); return logs.String() }
 	opts := launcher.Options{Stdout: out, Stderr: out,
 		Env: config.Env{LookupEnv: func(k string) (string, bool) { v, ok := env[k]; return v, ok }, Read: os.ReadFile}}
 	migrate := opts
@@ -160,6 +164,7 @@ func start(t *testing.T) *fixture {
 		m, err := newModule(rt)
 		if err == nil {
 			m.(*attachment.Module).UseCatalog(catalog{})
+			fx.mod = m.(*attachment.Module)
 		}
 		return m, err
 	}

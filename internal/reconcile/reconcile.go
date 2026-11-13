@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"io"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -118,6 +119,9 @@ func Daily(m *core.Base, ctx context.Context, _ *work.Run) error {
 	if err := presence(m, ctx); err != nil {
 		return err
 	}
+	if err := lifecycle.RetentionAlerts(m, ctx); err != nil {
+		return err
+	}
 	var leftovers []string
 	err := m.RT.DB.BackgroundTx(ctx, func(ctx context.Context, tx db.Tx) error {
 		// the purged ones whose objects are still there, and the dead versions past their keeping
@@ -184,8 +188,16 @@ func dead(m *core.Base, ctx context.Context) error {
 	return err
 }
 
-// orphans deletes the objects no record points to, older than OrphanWindow (FA12).
+// orphans deletes the objects no record points to, older than OrphanWindow (FA12): a final object whose version is
+// unknown or deleted, and a staged object whose version is no longer being uploaded or finalized (AT12: the staged
+// copy is only needed until the final one is written).
 func orphans(m *core.Base, ctx context.Context) error {
+	needed := map[string]string{
+		"objects/": `SELECT EXISTS (SELECT 1 FROM version WHERE attachment_id = $1::uuid AND version = $2
+			AND (state IN ('uploading', 'finalizing') OR NOT object_deleted))`,
+		"staging/": `SELECT EXISTS (SELECT 1 FROM version WHERE attachment_id = $1::uuid AND version = $2
+			AND state IN ('uploading', 'finalizing'))`,
+	}
 	for _, prefix := range []string{"objects/", "staging/"} {
 		after := ""
 		for {
@@ -202,13 +214,12 @@ func orphans(m *core.Base, ctx context.Context) error {
 					continue
 				}
 				v, err := strconv.ParseInt(parts[2], 10, 64)
-				if err != nil {
+				if err != nil || !uuidForm.MatchString(parts[1]) { // not a key this component writes: left alone
 					continue
 				}
 				var known bool
 				err = m.RT.DB.BackgroundTx(ctx, func(ctx context.Context, tx db.Tx) error {
-					return tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM version WHERE attachment_id::text = $1 AND version = $2
-						AND (state IN ('uploading', 'finalizing') OR NOT object_deleted))`, parts[1], v).Scan(&known)
+					return tx.QueryRow(ctx, needed[prefix], parts[1], v).Scan(&known)
 				})
 				if err != nil {
 					return err
@@ -225,6 +236,9 @@ func orphans(m *core.Base, ctx context.Context) error {
 	}
 	return nil
 }
+
+// uuidForm is an attachment's identity as a key segment: the lookup casts it, using the primary key.
+var uuidForm = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`)
 
 // presence marks the available attachments whose object is gone missing, and the missing ones whose object came back
 // (with the digest recorded) available again (FA13).
