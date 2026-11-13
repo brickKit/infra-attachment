@@ -99,7 +99,7 @@ func issued(m *core.Base, ctx context.Context, tx db.Tx, a records.Attachment, u
 	}
 	_, err := m.RT.Audit.Write(ctx, tx, audit.Record{Category: audit.BusinessChange, Operation: core.OpManage,
 		Outcome: audit.Succeeded, Actor: a.Owner, Represented: user,
-		Target: audit.TargetOf("infra.attachment", a.ID, map[string]any{"issued": how, "content_version": a.Version})})
+		Target: audit.TargetOf("infra.attachment", a.ID, nil), Changes: map[string]any{"issued": how, "content_version": a.Version}})
 	return err
 }
 
@@ -152,8 +152,8 @@ func Download(m *core.Base, c *httpx.Context) error {
 		}
 		if m.RT.Audit != nil {
 			_, err = m.RT.Audit.Write(ctx, tx, audit.Record{Category: audit.SensitiveRead, Operation: core.OpDownload,
-				Outcome: audit.Succeeded, Actor: user, Target: audit.TargetOf("infra.attachment", a.ID,
-					map[string]any{"content_version": v})})
+				Outcome: audit.Succeeded, Actor: user, Target: audit.TargetOf("infra.attachment", a.ID, nil),
+				Changes: map[string]any{"content_version": v}})
 		}
 		return err
 	})

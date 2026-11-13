@@ -324,7 +324,8 @@ func audited(m *core.Base, ctx context.Context, tx db.Tx, actor, id, what string
 		return nil
 	}
 	_, err := m.RT.Audit.Write(ctx, tx, audit.Record{Category: audit.BusinessChange, Operation: core.OpManage,
-		Outcome: audit.Succeeded, Actor: actor, Target: audit.TargetOf("infra.attachment", id, map[string]any{"change": what})})
+		Outcome: audit.Succeeded, Actor: actor, Target: audit.TargetOf("infra.attachment", id, nil),
+		Changes: map[string]any{"change": what}})
 	return err
 }
 

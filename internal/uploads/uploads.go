@@ -131,8 +131,8 @@ func CreateUpload(m *core.Base, ctx context.Context, in *attachmentv3.CreateUplo
 			}
 			if _, err := m.RT.Audit.Write(ctx, tx, audit.Record{Category: audit.BusinessChange, Operation: core.OpManage,
 				Outcome: audit.Succeeded, Actor: a.Owner, Represented: in.GetUser(),
-				Target: audit.TargetOf("infra.attachment", id, map[string]any{"issued": "upload session",
-					"content_version": v})}); err != nil {
+				Target:  audit.TargetOf("infra.attachment", id, nil),
+				Changes: map[string]any{"issued": "upload session", "content_version": v}}); err != nil {
 				return err
 			}
 		}
