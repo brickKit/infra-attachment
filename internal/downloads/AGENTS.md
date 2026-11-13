@@ -7,7 +7,9 @@
 
 ## 文件
 
-`downloads.go`
+| 文件 | 内容 |
+| --- | --- |
+| `downloads.go` | `IssueDownload`（预签名地址或一次性凭证）、`Download`（严格类别凭凭证转发字节） |
 
 ## 依赖与被依赖
 

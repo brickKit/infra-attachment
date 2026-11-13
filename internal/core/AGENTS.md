@@ -7,7 +7,11 @@
 
 ## 文件
 
-`names.go`、`base.go`、`rules.go`
+| 文件 | 内容 |
+| --- | --- |
+| `names.go` | 名字与常量（`ID`、`Stream`、`Changed`、配置键、资源与操作）；`Category`（类别快照）；`Definitions()` |
+| `base.go` | `Base`（运行时、存储、保留参数、目录来源）、`Retention`、`CatalogSource`；凭证的 `NewSecret`、`Digest` |
+| `rules.go` | `Check`、`Invalid`、`NotFound` |
 
 ## 依赖与被依赖
 

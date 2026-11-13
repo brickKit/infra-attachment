@@ -7,7 +7,9 @@
 
 ## 文件
 
-`lifecycle.go`
+| 文件 | 内容 |
+| --- | --- |
+| `lifecycle.go` | `List`、`Detach`、`Restore`、`SetRetentionStart`、`Erase`、`Hold`、`ReleaseHold`；`JobPurge`、`Purge`、`DeleteObjects` |
 
 ## 依赖与被依赖
 

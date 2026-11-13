@@ -7,7 +7,9 @@
 
 ## 文件
 
-`records.go`
+| 文件 | 内容 |
+| --- | --- |
+| `records.go` | `Attachment`、`ErrNotFound`；`Load`、`ByID`、`Of`（读取）；`SetState`（状态唯一的写入）；`Publish`（状态事件） |
 
 ## 依赖与被依赖
 

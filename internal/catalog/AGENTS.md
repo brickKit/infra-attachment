@@ -7,7 +7,9 @@
 
 ## 文件
 
-`catalog.go`
+| 文件 | 内容 |
+| --- | --- |
+| `catalog.go` | `JobSync`、`GRPC`（`Fetch`）、`Sync`；`Owner`、`Check`、`Denied`、`Settle` |
 
 ## 依赖与被依赖
 

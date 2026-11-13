@@ -7,7 +7,9 @@
 
 ## 文件
 
-`uploads.go`
+| 文件 | 内容 |
+| --- | --- |
+| `uploads.go` | `CreateUpload`（会话）、`Confirm`（凭证、先查暂存）、`Finalize`（条件复制到最终键、读最终对象检查） |
 
 ## 依赖与被依赖
 
